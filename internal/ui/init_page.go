@@ -18,7 +18,7 @@ func CreateInitPage(app *App) *tview.Flex {
     // 水平置中
     horizontalFlex := tview.NewFlex()
     horizontalFlex.AddItem(nil, 0, 1, false)
-    horizontalFlex.AddItem(initPage, 20, 0, true)
+    horizontalFlex.AddItem(initPage, 50, 0, true)
     horizontalFlex.AddItem(nil, 0, 1, false)
     
     return horizontalFlex

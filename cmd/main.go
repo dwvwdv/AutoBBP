@@ -2,7 +2,7 @@ package main
 
 import (
     "log"
-    "github.com/dwvwdv/AutoBBP/internal/ui"
+    "AutoBBP/internal/ui"
 )
 
 func main() {
