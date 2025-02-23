@@ -12,13 +12,13 @@ func ShowNewProjectPage(app *App) {
     
     // 垂直置中
     mainFlex.AddItem(nil, 0, 1, false)
-    mainFlex.AddItem(form, 0, 2, true)
+    mainFlex.AddItem(form, 0, 8, true)
     mainFlex.AddItem(nil, 0, 1, false)
     
     // 水平置中
     horizontalFlex := tview.NewFlex()
     horizontalFlex.AddItem(nil, 0, 1, false)
-    horizontalFlex.AddItem(mainFlex, 100, 0, true)
+    horizontalFlex.AddItem(mainFlex, 100, 1, true)
     horizontalFlex.AddItem(nil, 0, 1, false)
     
     app.Pages.AddPage("new_project", horizontalFlex, true, true)

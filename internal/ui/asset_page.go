@@ -1,9 +1,14 @@
 package ui
 
 import (
-	"AutoBBP/internal/models"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
+    "AutoBBP/internal/models"
+    "AutoBBP/internal/config"
+    "github.com/gdamore/tcell/v2"
+    "github.com/rivo/tview"
+    "fmt"
+    "os"
+    "path/filepath"
+    "strings"
 )
 
 type AssetPage struct {
@@ -12,14 +17,35 @@ type AssetPage struct {
 	assetList *tview.List
 	assets    []*models.Asset
 	deletedAssets [][]*models.Asset
+	config        *config.Config
+}
+
+// 添加 ShowError 方法到 App 結構體
+func (app *App) ShowError(message string) {
+    modal := tview.NewModal().
+        SetText(message).
+        AddButtons([]string{"OK"}).
+        SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+            app.Pages.RemovePage("error-modal")
+        })
+    app.Pages.AddPage("error-modal", modal, true, true)
 }
 
 func ShowAssetPage(app *App) {
-	page := &AssetPage{
-		app:    app,
-		assets: make([]*models.Asset, 0),
-	}
-	page.Setup()
+    // 加載配置
+    cfg, err := config.LoadConfig()
+    if err != nil {
+        app.ShowError("無法加載配置文件: " + err.Error())
+        return
+    }
+
+    page := &AssetPage{
+        app:           app,
+        assets:        make([]*models.Asset, 0),
+        deletedAssets: make([][]*models.Asset, 0),
+        config:        cfg,
+    }
+    page.Setup()
 }
 
 func (p *AssetPage) Setup() {
@@ -48,7 +74,24 @@ func (p *AssetPage) Setup() {
 		SetSelectedBackgroundColor(tcell.ColorDarkBlue)
 	p.assetList.SetBorder(true).SetTitle("Assets")
 
-	// 為資產列表添加輸入處理
+    // 添加公司選擇功能
+    p.mainFlex.AddItem(tview.NewButton("Select Company").
+        SetSelectedFunc(func() {
+            // 顯示公司選擇對話框
+            companies := p.getCompanyList()
+            modal := tview.NewModal().
+                SetText("選擇公司").
+                AddButtons(companies).
+                SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+                    if buttonIndex >= 0 {
+                        if err := p.LoadCompanyAssets(buttonLabel); err != nil {
+                            p.app.ShowError("無法加載資產: " + err.Error())
+                        }
+                    }
+                    p.app.Pages.RemovePage("company-modal")
+                })
+            p.app.Pages.AddPage("company-modal", modal, true, true)
+        }), 0, 1, false)
 
 	// 組裝主佈局
 	p.mainFlex.AddItem(buttonBar, 3, 0, true)  // 修改為 true 使按鈕欄可以獲得焦點
@@ -61,7 +104,10 @@ func (p *AssetPage) Setup() {
 	// 添加快捷鍵
 	p.mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if p.app.GetFocus() == p.assetList {
-			return p.listEvent(event)
+			action := p.listEvent(event) 
+			if action != nil{
+				return p.listEvent(event)
+			}
 		}
 		switch event.Rune() {
 		case 'h':
@@ -105,6 +151,21 @@ func (p *AssetPage) Setup() {
 	p.app.Pages.SwitchToPage("asset")
 }
 
+// 獲取可用的公司列表
+func (p *AssetPage) getCompanyList() []string {
+    files, err := os.ReadDir(p.config.AssetPath)
+    if err != nil {
+        return []string{}
+    }
+
+    var companies []string
+    for _, file := range files {
+        if !file.IsDir() && filepath.Ext(file.Name()) == ".json" {
+            companies = append(companies, strings.TrimSuffix(file.Name(), ".json"))
+        }
+    }
+    return companies
+}
 
 func (p *AssetPage) showAddAssetForm() {
 	form := tview.NewForm()
@@ -188,10 +249,27 @@ func (p *AssetPage) deleteSelectedAsset() {
 	}
 }
 
+func (p *AssetPage) LoadCompanyAssets(companyName string) error {
+    assets, err := models.LoadAssets(p.config.AssetPath, companyName)
+    if err != nil {
+        return err
+    }
+
+    p.assets = assets
+    p.refreshAssetList()
+    return nil
+}
+
 func (p *AssetPage) refreshAssetList() {
 	p.assetList.Clear()
 	for _, asset := range p.assets {
 		p.assetList.AddItem(asset.URL, asset.Description, 0, nil)
+        p.assetList.AddItem(
+            fmt.Sprintf("%s (%s)", asset.Name, asset.IP),
+            fmt.Sprintf("Ports: %v", asset.Ports),
+            0,
+            nil,
+        )
 	}
 }
 
@@ -200,7 +278,6 @@ func (p *AssetPage) exportAssets() {
 }
 
 func (p *AssetPage) listEvent(event *tcell.EventKey) *tcell.EventKey {
-	// 處理 dd 刪除操作
 	if event.Rune() == 'd' {
 		currentItem := p.assetList.GetCurrentItem()
 		if currentItem >= 0 {
@@ -213,19 +290,15 @@ func (p *AssetPage) listEvent(event *tcell.EventKey) *tcell.EventKey {
 			p.refreshAssetList()
 		}
 	}
-	// 處理 u 撤銷操作
 	if event.Rune() == 'u' {
 		if len(p.deletedAssets) > 0 {
-			// 恢復到最後一個保存的狀態
 			lastIndex := len(p.deletedAssets) - 1
 			p.assets = make([]*models.Asset, len(p.deletedAssets[lastIndex]))
 			copy(p.assets, p.deletedAssets[lastIndex])
 
-			// 移除已使用的歷史記錄
 			p.deletedAssets = p.deletedAssets[:lastIndex]
 
 			p.refreshAssetList()
-			return nil
 		}
 	}
 
